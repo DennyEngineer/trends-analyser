@@ -353,61 +353,70 @@ const fetchCompetitorData = async (term) => {
   }
 };
 
-  const fetchRelatedTopics = async (term) => {
+const fetchRelatedTopics = async (term) => {
+  try {
+    let topics = [];
+
     try {
-      let topics = [];
-      
-      try {
-        const wikiResponse = await axios.get(
-          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${term}&format=json&origin=*`,
-          { timeout: 5000 }
-        );
-        
-        if (wikiResponse.data?.query?.search?.length > 0) {
-          topics = wikiResponse.data.query.search.map(item => ({
-            title: item.title,
-            snippet: item.snippet.replace(/<\/?span[^>]*>/g, ''),
-            relevance: Math.floor(Math.random() * 100) + 1
-          }));
-        }
-      } catch (wikiError) {
-        console.warn("Wikipedia API error in topics, using mock data:", wikiError.message);
+      // Fetch from Reddit's search API
+      const response = await axios.get(
+        `https://www.reddit.com/search.json?q=${encodeURIComponent(term)}&sort=relevance&limit=10`,
+        { timeout: 5000 }
+      );
+
+      // Process Reddit posts
+      if (response.data?.data?.children?.length > 0) {
+        topics = response.data.data.children.map((child) => {
+          const post = child.data;
+
+          // Use upvote_ratio if available, otherwise fall back to a random relevance score
+          const upvoteRatio = post.upvote_ratio !== undefined ? Math.round(post.upvote_ratio * 100) : null;
+          const relevance = upvoteRatio ?? Math.floor(Math.random() * 100) + 1;
+
+          // Generate a snippet from the selftext or title
+          let snippet = post.selftext || post.title;
+          if (snippet.length > 150) {
+            snippet = snippet.substring(0, 150) + '...';
+          }
+
+          return {
+            title: post.title,
+            snippet: snippet,
+            relevance: relevance
+          };
+        });
       }
-      
-      if (topics.length === 0) {
-        topics = Array.from({ length: 10 }, (_, i) => ({
-          title: `${term} related topic ${i+1}`,
-          snippet: `This is a snippet about ${term} and related concepts.`,
-          relevance: Math.floor(Math.random() * 100) + 1
-        }));
-      }
-      
-      return {
-        topics: topics.slice(0, 10),
-        categories: ['Technology', 'Business', 'Consumer', 'Innovation', 'Trends'],
-        trendingArticles: Array.from({ length: 5 }, (_, i) => ({
-          title: `Trending article about ${term} - ${i+1}`,
-          source: ['TechCrunch', 'Forbes', 'BusinessInsider', 'Reuters', 'Bloomberg'][i],
-          date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0]
-        }))
-      };
-    } catch (error) {
-      console.error("Error in fetchRelatedTopics:", error);
-      return {
-        topics: Array.from({ length: 10 }, (_, i) => ({
-          title: `${term} related topic ${i+1}`,
-          snippet: `This is a snippet about ${term} and related concepts.`,
-          relevance: Math.floor(Math.random() * 100) + 1
-        })),
-        categories: ['Technology', 'Business', 'Consumer', 'Innovation', 'Trends'],
-        trendingArticles: Array.from({ length: 5 }, (_, i) => ({
-          title: `Trending article about ${term} - ${i+1}`,
-          source: ['TechCrunch', 'Forbes', 'BusinessInsider', 'Reuters', 'Bloomberg'][i],
-          date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0]
-        }))
-      };
+    } catch (redditError) {
+      console.warn("Reddit API error in topics, using mock data:", redditError.message);
     }
-  };
+
+    // If no topics from Reddit, use mock data
+    if (topics.length === 0) {
+      topics = Array.from({ length: 10 }, (_, i) => ({
+        title: `${term} related topic ${i + 1}`,
+        snippet: `This is a snippet about ${term} and related concepts.`,
+        relevance: Math.floor(Math.random() * 100) + 1
+      }));
+    }
+
+    // Return the structured data
+    return {
+      topics: topics.slice(0, 10), // Ensure max 10 topics
+      categories: ['Technology', 'Business', 'Consumer', 'Innovation', 'Trends'],
+    };
+  } catch (error) {
+    // Fallback in case of any unexpected errors
+    console.error("Error in fetchRelatedTopics:", error);
+    return {
+      topics: Array.from({ length: 10 }, (_, i) => ({
+        title: `${term} related topic ${i + 1}`,
+        snippet: `This is a snippet about ${term} and related concepts.`,
+        relevance: Math.floor(Math.random() * 100) + 1
+      })),
+      categories: ['Technology', 'Business', 'Consumer', 'Innovation', 'Trends'],
+    };
+  }
+};
 
   const fetchGeographicData = async (term) => {
     try {
@@ -577,15 +586,6 @@ const fetchCompetitorData = async (term) => {
                 searches={recentSearches}
                 setSearchTerm={setSearchTerm}
               />
-              
-              {relatedTopics && !isLoading && (
-                <div className="mt-6">
-                  <RelatedTopics
-                    searchTerm={searchTerm}
-                    data={relatedTopics}
-                  />
-                </div>
-              )}
               
               {geographicData && !isLoading && (
                 <div className="mt-6">
